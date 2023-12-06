@@ -6,4 +6,4 @@ Tec.de Inteligencia Artificial
 Teoria de Control
  
 9
-19
+17

@@ -14,14 +14,14 @@ KeyDAYS = {
 }
 
 def get_df(path):
-    if not os.path.exists('horarios.csv'):
+    if not os.path.exists('data/horarios.csv'):
         pdf = tabula.read_pdf(path, pages="all", lattice=True, multiple_tables=True)
         df  = pd.concat(pdf)
         df['Materia' ] = df['Materia' ].replace('\r', ' ', regex=True)
         df['Profesor'] = df['Profesor'].replace('\r', ' ', regex=True)
-        df.to_csv("horarios.csv", index=False)
+        df.to_csv("data/horarios.csv", index=False)
     else:
-        df = pd.read_csv('horarios.csv')
+        df = pd.read_csv('data/horarios.csv')
     return df
 
 def NRC_dict(df):
@@ -85,7 +85,7 @@ def custom_agg(x):
 
 def main():
     to_apply_to = []
-    path = 'horarios.pdf'
+    path = 'data/horarios.pdf'
     classes_quantity = int(argv[1])
     df = get_df(path)
 
