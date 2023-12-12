@@ -1,4 +1,5 @@
 import os
+import random
 import tabula
 import itertools
 import pandas as pd
@@ -138,7 +139,7 @@ def format_xlsx(PATH: str, color_map: dict[str, str]) -> None:
 
     book.save(f'{PATH}/schedules.xlsx')
 
-def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[str, Materia]) -> None:
+def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[str, Materia], hour_intervals: list[str]) -> None:
     if os.path.exists(SCHEDULES_PATH):
         for file in os.listdir(SCHEDULES_PATH):
             os.remove(f'{SCHEDULES_PATH}/{file}') if file.endswith('.csv') else None
@@ -168,13 +169,14 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
         'ff666699',
         'ffe0e0f2'
     ]
+    random.shuffle(colors)
     i = 0
     
     with pd.ExcelWriter(f'{SCHEDULES_PATH}/schedules.xlsx') as writer:
         row_count = 0
         for schedule in schedules:
             shcedule_df     = pd.DataFrame(columns=['HORAS', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'])
-            classes_df_keys = ['NRC', 'MATERIA', 'PROFESOR']
+            classes_df_keys = ['NRC', 'MATERIA', 'HORAS', 'PROFESOR', 'SALON']
             classes_df      = pd.DataFrame(columns=classes_df_keys)
             for nrc in schedule:
 
@@ -195,12 +197,22 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
                     'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
                 })])
 
-                class_temp = pd.DataFrame({key: NRCs[nrc].__dict__[key] for key in classes_df_keys}, index=['NRC'])
+                class_temp = pd.DataFrame({key: NRCs[nrc].__dict__[key] for key in classes_df_keys}, index=[0, 1])
                 classes_df = pd.concat([classes_df, class_temp])
 
                 if nrc not in color_map: color_map[nrc] = colors[i%len(colors)]; i+=1
 
-            grouped_df  = shcedule_df.groupby(['HORAS']).agg(custom_agg)
+            for hour in hour_intervals:
+                if hour not in shcedule_df['HORAS'].values:
+                    shcedule_df = pd.concat([shcedule_df, pd.DataFrame({
+                        'HORAS'    : [hour], 
+                        'Lunes'    : None,
+                        'Martes'   : None,
+                        'Miércoles': None,
+                        'Jueves'   : None,
+                        'Viernes'  : None
+                    })])
+            grouped_df = shcedule_df.groupby(['HORAS']).agg(custom_agg)
             grouped_df = grouped_df.astype(str)
             grouped_df.to_excel(
                 writer, 
@@ -209,6 +221,9 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
             )
             classes_df = classes_df.astype(str)
             classes_df['PROFESOR'] = classes_df['PROFESOR'].str.title()
+            classes_df = classes_df.sort_values(by=['HORAS'])
+            classes_df = classes_df[['NRC', 'MATERIA', 'PROFESOR', 'SALON']]
+            classes_df = classes_df.drop_duplicates()
             classes_df.to_excel(
                 writer, 
                 sheet_name='Sheet1', 
@@ -230,7 +245,9 @@ def main():
     classes_by_name = group_by_name(NRCs)
     hour_intervals  = range_to_intervals(hour_range)
     schedules       = get_schedules(NRCs, classes_by_name, prof_blacklist, hour_intervals)
-    save_schedules(SCHEDULES_PATH, schedules, NRCs)
-    
+    if not schedules: print('No hay horarios disponibles'); exit()
+    save_schedules(SCHEDULES_PATH, schedules, NRCs, hour_intervals)
+    print('Horarios guardados en schedules/schedules.xlsx')
+
 if __name__ == '__main__':
     main()
