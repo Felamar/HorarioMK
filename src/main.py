@@ -5,125 +5,119 @@ from sys import argv
 import os
 import itertools
 
-def get_df(path):
-    CLASS_CSV = 'data/horarios.csv'
-    if not os.path.exists(CLASS_CSV):
-        pdf = tabula.read_pdf(path, pages="all", lattice=True, multiple_tables=True)
-        df  = pd.concat(pdf)
+def get_df(PDF_PATH: str, DF_PATH: str) -> pd.DataFrame:
+    if not os.path.exists(DF_PATH):
+        pdf_table = tabula.read_pdf(
+            PDF_PATH, 
+            pages="all", 
+            lattice=True, 
+            multiple_tables=True
+        )
+        df  = pd.concat(pdf_table)
         df['Materia' ] = df['Materia' ].replace('\r', ' ', regex=True)
         df['Profesor'] = df['Profesor'].replace('\r', ' ', regex=True)
-        df.to_csv(CLASS_CSV, index=False)
+        df.to_csv(DF_PATH, index=False)
     else:
-        df = pd.read_csv(CLASS_CSV)
+        df = pd.read_csv(DF_PATH)
     return df
 
-def range_by_hour(hours: tuple):
-    hour = hours[0]
-    range_ = []
+def range_to_intervals(hours: tuple) -> list[str]:
+    hour_it     = hours[0]
+    hour_ranges = []
     while True:
-        start  = str(hour).zfill(4)
-        finish = str(hour + 59).zfill(4)
-        range_.append(f'{start}-{finish}')
-        hour  += 100
-        if hour-41 == hours[1]: break
+        start    = str(hour_it   ).zfill(4)
+        finish   = str(hour_it+59).zfill(4)
+        hour_it += 100
+        hour_ranges.append(f'{start}-{finish}')
+        if hour_it-41 == hours[1]: break
+    return hour_ranges
 
-    return range_
-
-def NRC_dict(df):
+def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[str, Materia], list[tuple[str, str]]]:
+    NRCs    = {}
     Imparte = []
-    NRCs = {}
 
     for _, row in df.iterrows():
+        if row['Materia'] not in classes_to_take: continue
         start, finish = row['Hora'].split('-')
-        hours = range_by_hour((int(start), int(finish)))
-        
+        hours = range_to_intervals((int(start), int(finish)))
         if row['NRC'] in NRCs:
             NRCs[row['NRC']].add_hora(hours)
             NRCs[row['NRC']].add_dia(row['Días'])
         else:
-            row_dict = row.to_dict()
+            row_dict         = row.to_dict()
             row_dict['Hora'] = hours
             NRCs[row['NRC']] = Materia(row_dict)
-
         if (row['NRC'], row['Profesor']) not in Imparte:
             Imparte.append((row['NRC'], row['Profesor']))
 
     return NRCs, Imparte
 
-def get_materias(NRCs, a_cursar):
-    available = []
-    for _, materia in NRCs.items():
-        if materia.NOMBRE in a_cursar:
-            available.append(materia)
-    return available
-
-def materias_by_name(available_classes):
-    horarios = {}
-    for clas in available_classes:
-        if clas.NOMBRE not in horarios:
-            horarios[clas.NOMBRE] = [clas.NRC]
+def group_by_name(NRCs : dict[str, Materia]) -> dict[str, list[str]]:
+    classes_by_name = {}
+    for _, class_ in NRCs.items():
+        if class_.NOMBRE not in classes_by_name:
+            classes_by_name[class_.NOMBRE] = [class_.NRC]
         else:
-            horarios[clas.NOMBRE].append(clas.NRC)
-    return horarios
+            classes_by_name[class_.NOMBRE].append(class_.NRC)
+    return classes_by_name
 
-def get_horarios(NRCs, classes, prof_restr, hour_restr):
-    OUTPUT_PATH = 'horarios/combinations.txt'
-    horarios = itertools.product(*classes.values())
-    valid_horarios = []
+def get_schedules(NRCs: dict[str, Materia], classes_by_name: dict[str, list[str]], prof_blacklist: list[str], hour_ranges: list[str]) -> list[tuple[str]]:
+    OUTPUT_PATH        = 'schedules/combinations.txt'
+    schedules          = []
+    possible_schedules = itertools.product(*classes_by_name.values())
+
     with open(OUTPUT_PATH, 'w') as file:
-        for horario in horarios:
-            conflicts = {}
-            isThereConflict = False
-            for nrc in horario:
+        for schedule in possible_schedules:
+            time_conflicts  = {}
+            conflict_exists = False
+            for nrc in schedule:
                 # Check if there is a professor conflict
-                if NRCs[nrc].PROFESOR in prof_restr:      isThereConflict = True; break
+                if NRCs[nrc].PROFESOR in prof_blacklist: conflict_exists = True; break
                 # Check if there is a hour conflict
-                if not all(hour in hour_restr for hour in NRCs[nrc].HORAS): isThereConflict = True; break
-                # if NRCs[nrc].HORAS not in hour_restr: isThereConflict = True; break
+                all_hours_in_range = all(hour_range in hour_ranges for hour_range in NRCs[nrc].HORAS)
+                if not all_hours_in_range: conflict_exists = True; break
                 # Check if there is a schedule conflict
-                key = f'{NRCs[nrc].DIAS, NRCs[nrc].HORAS}'
-                conflicts[key] = conflicts.get(key, 0) + 1
-                if conflicts[key] > 1: isThereConflict = True; break
+                time_slot = f'{NRCs[nrc].DIAS, NRCs[nrc].HORAS}'
+                time_conflicts[time_slot] = time_conflicts.get(time_slot, 0) + 1
+                if time_conflicts[time_slot] > 1: conflict_exists = True; break
+            if not conflict_exists: 
+                file.write(f'{schedule}\n')
+                schedules.append(schedule)
+    return schedules
 
-            if not isThereConflict: 
-                file.write(f'{horario}\n')
-                valid_horarios.append(horario)
-                
-    return valid_horarios
-
-def custom_agg(x):
+def custom_agg(x: pd.Series) -> str:
     st = set(x.dropna())
     st_str = ', '.join(str(e) for e in st)
     return st_str if st_str else ''
 
-def main():
-    to_apply_to = []
-    DB_PDF = 'data/horarios.pdf'
-    # classes_quantity = int(argv[1])
-    classes_quantity = 6
-    df = get_df(DB_PDF)
-
+def get_params() -> tuple[list[str], list[str], tuple[int]]:
+    classes_to_take = []
+    print(' '+'-'*20)
+    classes_quantity = int(input('| No. Clases'.ljust(20) + ' | '))
+    print(' '+'-'*20)
     for i in range(classes_quantity):
-        to_apply_to.append(input(f'Nombre de la materia {i+1}:'))
+        classes_to_take.append(input(f'| Clase {i+1}'.ljust(20) + ' | '))
+        print(' '+'-'*20)
+        # classes_to_take.append(input(f'Nombre de la materia {i+1}: '.ljust(25)))
+    prof_blacklist = input('| Profes a Evitar'.ljust(20) + ' | ').lower().split(', ')
+    print(' '+'-'*20)
+    start_hour = int(input('| Desde: '.ljust(20) + ' | '))
+    print(' '+'-'*20)
+    end_hour   = int(input('| Hasta: '.ljust(20) + ' | '))
+    print(' '+'-'*20)
+    hour_range = (start_hour*100, end_hour*100-41)
+    return classes_to_take, prof_blacklist, hour_range
 
-    NRCs, Imparte = NRC_dict(df)
-    available_classes = get_materias(NRCs, to_apply_to)
-
-    classes = materias_by_name(available_classes)
-    prof_restr = input('Profesores a evitar: ').lower().split(', ')
-    hours = (int(input('Desde:'.ljust(10)))*100, int(input('Hasta:'.ljust(10)))*100-41)
-    hour_restr = range_by_hour(hours)
-    horarios_t = get_horarios(NRCs, classes, prof_restr, hour_restr)
-
-    if os.path.exists('horarios'):
-        for file in os.listdir('horarios'):
-            os.remove(f'horarios/{file}') if file.endswith('.csv') else None
+def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[str, Materia]) -> None:
+    if os.path.exists(SCHEDULES_PATH):
+        for file in os.listdir(SCHEDULES_PATH):
+            os.remove(f'{SCHEDULES_PATH}/{file}') if file.endswith('.csv') else None
     else:
-        os.mkdir('horarios')
+        os.mkdir(SCHEDULES_PATH)
 
-    for i, horario in enumerate(horarios_t):
+    for i, schedule in enumerate(schedules):
         df = pd.DataFrame(columns=['HORAS', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'])
-        for nrc in horario:
+        for nrc in schedule:
             df = pd.concat([df, pd.DataFrame({
                 'HORAS'    : [NRCs[nrc].HORAS[0]], 
                 'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'M' in NRCs[nrc].DIAS else None,
@@ -140,10 +134,23 @@ def main():
                 'Jueves'   : nrc if 'J' in NRCs[nrc].DIAS else None,
                 'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
             })])
-        df.to_csv('test.csv', index=False)
-        grouped_df = df.groupby(['HORAS']).agg(custom_agg)
+
+        grouped_df  = df.groupby(['HORAS']).agg(custom_agg)
         empty_count = grouped_df.map(lambda x: x == '' or x == ' ').sum().sum()
-        grouped_df.to_csv(f'horarios/{empty_count}_horario{i+1}.csv')
-        
+        grouped_df.to_csv(f'{SCHEDULES_PATH}/{empty_count}_schedule_{i+1}.csv')
+
+def main():
+    DF_PATH        = 'data/classes.csv'
+    PDF_PATH       = 'data/horarios.pdf'
+    SCHEDULES_PATH = 'schedules'
+
+    classes_to_take, prof_blacklist, hour_range = get_params()
+    df              = get_df(PDF_PATH, DF_PATH)
+    NRCs, Imparte   = get_NRCs(df, classes_to_take)
+    classes_by_name = group_by_name(NRCs)
+    hour_intervals  = range_to_intervals(hour_range)
+    schedules       = get_schedules(NRCs, classes_by_name, prof_blacklist, hour_intervals)
+    save_schedules(SCHEDULES_PATH, schedules, NRCs)
+    
 if __name__ == '__main__':
     main()
