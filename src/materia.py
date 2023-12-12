@@ -4,7 +4,7 @@ class Materia:
     def __init__(self, kargs) -> None:
         self.NRC      = kargs['NRC'     ]
         self.CLAVE    = kargs['Clave'   ]
-        self.NOMBRE   = kargs['Materia' ]
+        self.MATERIA  = kargs['Materia' ]
         self.SECC     = kargs['Secc'    ]
         self.DIAS     = [kargs['Días'   ]]
         self.HORAS    = kargs['Hora'    ]
