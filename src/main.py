@@ -2,7 +2,6 @@ import os
 import tabula
 import itertools
 import pandas as pd
-from random import randint
 from materia import Materia
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
