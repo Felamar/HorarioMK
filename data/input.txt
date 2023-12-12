@@ -9,5 +9,3 @@ Teoria de Control
 9
 17
 data/horarios.pdf
-
-OIDOR - GARCIA JOSE, CERON - GARNICA CARMEN, ZACARIAS - FLORES FERNANDO, 
