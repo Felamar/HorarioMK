@@ -1,9 +1,11 @@
+6
 Redes Inalambricas
 Arquitectura de Computadoras
 Progra. Concurrente y Paralela
 Desarrollo de Aplicaciones Web
 Tec.de Inteligencia Artificial
 Teoria de Control
- 
+OIDOR - GARCIA JOSE, CERON - GARNICA CARMEN, ZACARIAS - FLORES FERNANDO, 
 9
 17
+data/horarios.pdf
