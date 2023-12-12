@@ -5,7 +5,7 @@ Progra. Concurrente y Paralela
 Desarrollo de Aplicaciones Web
 Tec.de Inteligencia Artificial
 Teoria de Control
-
+Ceron - Garnica Carmen
 9
 17
 data/horarios.pdf
