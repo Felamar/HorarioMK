@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
 def get_df(DF_PATH_OUTPUT: str) -> pd.DataFrame:
-    PDF_PATH       = input('| PDF Path'.ljust(20) + ' | ')
+    PDF_PATH = input('| PDF Path'.ljust(20) + ' | ')
     print(' '+'-'*20)
     if not os.path.exists('data'): os.mkdir('data')
     if not os.path.exists(DF_PATH_OUTPUT):
@@ -37,7 +37,7 @@ def range_to_intervals(hours: tuple) -> list[str]:
         if hour_it-41 == hours[1]: break
     return hour_ranges
 
-def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[str, Materia], list[tuple[str, str]]]:
+def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[int, Materia], list[tuple[str, str]]]:
     NRCs    = {}
     Imparte = []
 
@@ -57,7 +57,7 @@ def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[str, Ma
 
     return NRCs, Imparte
 
-def group_by_name(NRCs : dict[str, Materia]) -> dict[str, list[str]]:
+def group_by_name(NRCs: dict[int, Materia]) -> dict[str, list[str]]:
     classes_by_name = {}
     for _, class_ in NRCs.items():
         if class_.MATERIA not in classes_by_name:
@@ -66,7 +66,7 @@ def group_by_name(NRCs : dict[str, Materia]) -> dict[str, list[str]]:
             classes_by_name[class_.MATERIA].append(class_.NRC)
     return classes_by_name
 
-def get_schedules(NRCs: dict[str, Materia], classes_by_name: dict[str, list[str]], prof_blacklist: list[str], hour_ranges: list[str]) -> list[tuple[str]]:
+def get_schedules(NRCs: dict[int, Materia], classes_by_name: dict[str, list[str]], prof_blacklist: list[str], hour_ranges: list[str]) -> list[tuple[str]]:
     OUTPUT_PATH        = 'schedules/combinations.txt'
     if not os.path.exists('schedules'): os.mkdir('schedules')
     schedules          = []
@@ -114,39 +114,9 @@ def get_params() -> tuple[list[str], list[str], tuple[int]]:
     hour_range = (start_hour*100, end_hour*100-41)
     return classes_to_take, prof_blacklist, hour_range
 
-def format_xlsx(PATH: str, color_map: dict[str, str]) -> None:
+def format_xlsx(PATH: str, color_map: dict[str, int], NRCs: dict[int, Materia]) -> None:
     book = load_workbook(f'{PATH}/schedules.xlsx')
     sheet = book.active
-
-    for column in sheet.columns:
-        max_length = 0
-        column = [cell for cell in column]
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(cell.value)
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        sheet.column_dimensions[column[0].column_letter].width = adjusted_width
-
-    for nrc, color in color_map.items():
-        pattern = PatternFill(start_color=color, end_color=color, fill_type='solid')
-        for row in sheet.iter_rows(min_row=2, max_col=sheet.max_column, max_row=sheet.max_row):
-            for cell in row:
-                if cell.value == str(nrc):
-                    cell.fill = pattern
-
-    book.save(f'{PATH}/schedules.xlsx')
-
-def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[str, Materia], hour_intervals: list[str]) -> None:
-    if os.path.exists(SCHEDULES_PATH):
-        for file in os.listdir(SCHEDULES_PATH):
-            os.remove(f'{SCHEDULES_PATH}/{file}') if file.endswith('.csv') else None
-    else:
-        os.mkdir(SCHEDULES_PATH)
-
-    color_map  = {}
     colors = [
         'ffa6cee3',
         'fffdbf6f',
@@ -170,6 +140,41 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
         'ffe0e0f2'
     ]
     random.shuffle(colors)
+
+    for column in sheet.columns:
+        max_length = 0
+        column = [cell for cell in column]
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        sheet.column_dimensions[column[0].column_letter].width = adjusted_width
+
+    for name, i in color_map.items():
+        pattern = PatternFill(start_color=colors[i], end_color=colors[i], fill_type='solid')
+        #  max_col=sheet.max_column, max_row=sheet.max_row):
+        for row in sheet.iter_rows(min_row=2, min_col=2, max_row=sheet.max_row, max_col=8):
+            for cell in row:
+                try:
+                    if NRCs[int(cell.value)].MATERIA == name:
+                        cell.fill = pattern
+                except:
+                    pass
+                    
+
+    book.save(f'{PATH}/schedules.xlsx')
+
+def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[int, Materia], hour_intervals: list[str]) -> dict[str, tuple[str, int]]:
+    if os.path.exists(SCHEDULES_PATH):
+        for file in os.listdir(SCHEDULES_PATH):
+            os.remove(f'{SCHEDULES_PATH}/{file}') if file.endswith('.csv') else None
+    else:
+        os.mkdir(SCHEDULES_PATH)
+
+    color_map  = {}
     i = 0
     
     with pd.ExcelWriter(f'{SCHEDULES_PATH}/schedules.xlsx') as writer:
@@ -200,7 +205,7 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
                 class_temp = pd.DataFrame({key: NRCs[nrc].__dict__[key] for key in classes_df_keys}, index=[0, 1])
                 classes_df = pd.concat([classes_df, class_temp])
 
-                if nrc not in color_map: color_map[nrc] = colors[i%len(colors)]; i+=1
+                if NRCs[nrc].MATERIA not in color_map: color_map[NRCs[nrc].MATERIA] = i; i+=1
 
             for hour in hour_intervals:
                 if hour not in shcedule_df['HORAS'].values:
@@ -232,8 +237,7 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
                 index=False
             )
             row_count += len(grouped_df) + 4
-
-    format_xlsx(SCHEDULES_PATH, color_map)
+    return color_map
 
 def main():
     SCHEDULES_PATH = 'schedules'
@@ -246,7 +250,8 @@ def main():
     hour_intervals  = range_to_intervals(hour_range)
     schedules       = get_schedules(NRCs, classes_by_name, prof_blacklist, hour_intervals)
     if not schedules: print('No hay horarios disponibles'); exit()
-    save_schedules(SCHEDULES_PATH, schedules, NRCs, hour_intervals)
+    color_map       = save_schedules(SCHEDULES_PATH, schedules, NRCs, hour_intervals)
+    format_xlsx(SCHEDULES_PATH, color_map, NRCs)
     print('Horarios guardados en schedules/schedules.xlsx')
 
 if __name__ == '__main__':
