@@ -5,8 +5,11 @@ from sys import argv
 import os
 import itertools
 
-def get_df(PDF_PATH: str, DF_PATH: str) -> pd.DataFrame:
-    if not os.path.exists(DF_PATH):
+def get_df(DF_PATH_OUTPUT: str) -> pd.DataFrame:
+    PDF_PATH       = input('| PDF Path'.ljust(20) + ' | ')
+    print(' '+'-'*20)
+    if not os.path.exists('data'): os.mkdir('data')
+    if not os.path.exists(DF_PATH_OUTPUT):
         pdf_table = tabula.read_pdf(
             PDF_PATH, 
             pages="all", 
@@ -16,9 +19,9 @@ def get_df(PDF_PATH: str, DF_PATH: str) -> pd.DataFrame:
         df  = pd.concat(pdf_table)
         df['Materia' ] = df['Materia' ].replace('\r', ' ', regex=True)
         df['Profesor'] = df['Profesor'].replace('\r', ' ', regex=True)
-        df.to_csv(DF_PATH, index=False)
+        df.to_csv(DF_PATH_OUTPUT, index=False)
     else:
-        df = pd.read_csv(DF_PATH)
+        df = pd.read_csv(DF_PATH_OUTPUT)
     return df
 
 def range_to_intervals(hours: tuple) -> list[str]:
@@ -63,6 +66,7 @@ def group_by_name(NRCs : dict[str, Materia]) -> dict[str, list[str]]:
 
 def get_schedules(NRCs: dict[str, Materia], classes_by_name: dict[str, list[str]], prof_blacklist: list[str], hour_ranges: list[str]) -> list[tuple[str]]:
     OUTPUT_PATH        = 'schedules/combinations.txt'
+    if not os.path.exists('schedules'): os.mkdir('schedules')
     schedules          = []
     possible_schedules = itertools.product(*classes_by_name.values())
 
@@ -140,12 +144,11 @@ def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[
         grouped_df.to_csv(f'{SCHEDULES_PATH}/{empty_count}_schedule_{i+1}.csv')
 
 def main():
-    DF_PATH        = 'data/classes.csv'
-    PDF_PATH       = 'data/horarios.pdf'
     SCHEDULES_PATH = 'schedules'
+    DF_PATH_OUTPUT = 'data/classes.csv'
 
     classes_to_take, prof_blacklist, hour_range = get_params()
-    df              = get_df(PDF_PATH, DF_PATH)
+    df              = get_df(DF_PATH_OUTPUT)
     NRCs, Imparte   = get_NRCs(df, classes_to_take)
     classes_by_name = group_by_name(NRCs)
     hour_intervals  = range_to_intervals(hour_range)
