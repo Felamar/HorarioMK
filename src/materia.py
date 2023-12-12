@@ -11,10 +11,6 @@ class Materia:
         self.PROFESOR = kargs['Profesor'].lower()
         self.SALON    = kargs['Salón'   ]
         
-    def show(self) -> None:
-        df = pd.DataFrame([vars(self)], index=['Values'])
-        print(df)
-
     def add_hora(self, hora) -> None:
         self.HORAS.extend(hora)
         self.HORAS = set(self.HORAS)
