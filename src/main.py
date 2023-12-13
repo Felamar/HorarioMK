@@ -1,5 +1,5 @@
 import os
-import random
+from tqdm import tqdm
 import tabula
 import itertools
 import pandas as pd
@@ -59,7 +59,8 @@ def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[int, Ma
 
 def group_by_name(NRCs: dict[int, Materia]) -> dict[str, list[str]]:
     classes_by_name = {}
-    for _, class_ in NRCs.items():
+    print('Agrupando clases por nombre...')
+    for _, class_ in tqdm(NRCs.items()):
         if class_.MATERIA not in classes_by_name:
             classes_by_name[class_.MATERIA] = [class_.NRC]
         else:
@@ -72,8 +73,9 @@ def get_schedules(NRCs: dict[int, Materia], classes_by_name: dict[str, list[str]
     schedules          = []
     possible_schedules = itertools.product(*classes_by_name.values())
 
+    print('Generando horarios...')
     with open(OUTPUT_PATH, 'w') as file:
-        for schedule in possible_schedules:
+        for schedule in tqdm(possible_schedules):
             time_conflicts  = {}
             conflict_exists = False
             for nrc in schedule:
@@ -89,6 +91,8 @@ def get_schedules(NRCs: dict[int, Materia], classes_by_name: dict[str, list[str]
             if not conflict_exists: 
                 file.write(f'{schedule}\n')
                 schedules.append(schedule)
+
+    if not schedules: print('No hay horarios disponibles'); exit()
     return schedules
 
 def custom_agg(x: pd.Series) -> str:
@@ -115,31 +119,21 @@ def get_params() -> tuple[list[str], list[str], tuple[int]]:
     return classes_to_take, prof_blacklist, hour_range
 
 def format_xlsx(PATH: str, color_map: dict[str, int], NRCs: dict[int, Materia]) -> None:
-    book = load_workbook(f'{PATH}/schedules.xlsx')
+    book = load_workbook(f'{PATH}.xlsx')
     sheet = book.active
+
     colors = [
-        'ffa6cee3',
-        'fffdbf6f',
-        'ffb2df8a',
-        'fffb9a99',
-        'ffd0d1e6',
-        'ffd8b365',
-        'fff4cae4',
-        'ffbababa',
-        'ffffff99',
-        'ff9ecae1',
-        'ffb3de69',
-        'ffffad80',
-        'ff80cdc1',
-        'ffffb3b3',
-        'ffb3daff',
-        'ffffe699',
-        'ffc2f0c2',
-        'ffcc6666',
-        'ff666699',
-        'ffe0e0f2'
+        'FFB0E0E6',  # Pastel Blue
+        'FFF49AC2',  # Pastel Magenta
+        'FF77DD77',  # Pastel Green
+        'FFAEC6CF',  # Pastel Pink
+        'FFFFB347',  # Pastel Orange
+        'FFFDFD96',  # Pastel Yellow
+        'FFFF6961',  # Pastel Red
+        'FFCB99C9',  # Pastel Purple
+        'FFB39EB5',  # Pastel Violet
+        'FFCC99FF'   # Pastel Lavender
     ]
-    random.shuffle(colors)
 
     for column in sheet.columns:
         max_length = 0
@@ -153,7 +147,8 @@ def format_xlsx(PATH: str, color_map: dict[str, int], NRCs: dict[int, Materia]) 
         adjusted_width = (max_length + 2)
         sheet.column_dimensions[column[0].column_letter].width = adjusted_width
 
-    for name, i in color_map.items():
+    print('Aplicando formato al archivo...')
+    for name, i in tqdm(color_map.items()):
         pattern = PatternFill(start_color=colors[i], end_color=colors[i], fill_type='solid')
         #  max_col=sheet.max_column, max_row=sheet.max_row):
         for row in sheet.iter_rows(min_row=2, min_col=2, max_row=sheet.max_row, max_col=8):
@@ -165,82 +160,134 @@ def format_xlsx(PATH: str, color_map: dict[str, int], NRCs: dict[int, Materia]) 
                     pass
                     
 
-    book.save(f'{PATH}/schedules.xlsx')
+    book.save(f'{PATH}.xlsx')
+    print(f'Horarios guardados en {PATH}.xlsx')
 
-def save_schedules(SCHEDULES_PATH: str, schedules: list[tuple[str]], NRCs: dict[int, Materia], hour_intervals: list[str]) -> dict[str, tuple[str, int]]:
-    if os.path.exists(SCHEDULES_PATH):
-        for file in os.listdir(SCHEDULES_PATH):
-            os.remove(f'{SCHEDULES_PATH}/{file}') if file.endswith('.csv') else None
-    else:
-        os.mkdir(SCHEDULES_PATH)
+def get_priority(schedule_df: pd.DataFrame, NRCs: dict[int, Materia], white_list: list[str]) -> int:
+    df       = schedule_df.copy()
+    droped   = df[(df['Martes'] == '') & (df['Miércoles'] == '')]
+    aux_df   = df[(df['Martes'] != '') | (df['Miércoles'] != '')]
 
-    color_map  = {}
-    i = 0
+    start        = int(aux_df.index[0].split('-')[0])
+    end          = int(aux_df.index[-1].split('-')[1])
+    active_hours = range_to_intervals((start, end))
+
+    priority   = 0
+    dead_hours = len(set(active_hours) & set(droped.index))
+
+    for i, (j, nrc) in enumerate(aux_df['Lunes'].items()):
+        if nrc == '' and i == 0: continue
+        if nrc == '' and i == len(aux_df)-1: continue
+        if nrc == '' and j == active_hours[-2]: priority += 5; continue
+        if nrc == '' and j == active_hours[1] : priority += 5; continue
+        if nrc == '': dead_hours+=1; continue
+        if NRCs[int(nrc)].PROFESOR in white_list: priority -= 10
     
-    with pd.ExcelWriter(f'{SCHEDULES_PATH}/schedules.xlsx') as writer:
+    priority += dead_hours * 20
+    return priority
+
+def group_by_priority(
+            schedules: list[tuple[str]], 
+            NRCs: dict[int, Materia], 
+            hour_intervals: list[str], 
+            white_list: list[str]
+    ) -> tuple[dict[int, list[tuple[pd.DataFrame, pd.DataFrame]]], dict[str, int]]:
+    
+    schedules_by_priority = {}
+    color_map = {}
+    i = 0
+    print('Obteniendo los mejores horarios...')
+    for schedule in tqdm(schedules):
+        schedule_df = pd.DataFrame(columns=['HORAS', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'])
+        classes_df_keys = ['NRC', 'MATERIA', 'HORAS', 'PROFESOR', 'SALON']
+        classes_df = pd.DataFrame(columns=classes_df_keys)
+        for nrc in schedule:
+            schedule_df = pd.concat([schedule_df, pd.DataFrame({
+                'HORAS'    : [NRCs[nrc].HORAS[0]], 
+                'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'M' in NRCs[nrc].DIAS else None,
+                'Martes'   : nrc if 'A' in NRCs[nrc].DIAS else None,
+                'Miércoles': nrc if 'M' in NRCs[nrc].DIAS else None,
+                'Jueves'   : nrc if 'J' in NRCs[nrc].DIAS else None,
+                'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
+            })])
+            schedule_df = pd.concat([schedule_df, pd.DataFrame({
+                'HORAS'    : [NRCs[nrc].HORAS[1]], 
+                'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'A' in NRCs[nrc].DIAS else None,
+                'Martes'   : nrc if 'A' in NRCs[nrc].DIAS else None,
+                'Miércoles': nrc if 'M' in NRCs[nrc].DIAS else None,
+                'Jueves'   : nrc if 'J' in NRCs[nrc].DIAS else None,
+                'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
+            })])
+
+            class_temp = pd.DataFrame({key: NRCs[nrc].__dict__[key] for key in classes_df_keys}, index=[0, 1])
+            classes_df = pd.concat([classes_df, class_temp])
+
+            if NRCs[nrc].MATERIA not in color_map: color_map[NRCs[nrc].MATERIA] = i; i+=1
+
+        for hour in hour_intervals:
+            if hour not in schedule_df['HORAS'].values:
+                schedule_df = pd.concat([schedule_df, pd.DataFrame({
+                    'HORAS'    : [hour], 
+                    'Lunes'    : None,
+                    'Martes'   : None,
+                    'Miércoles': None,
+                    'Jueves'   : None,
+                    'Viernes'  : None
+                })])
+
+        grouped_df = schedule_df.groupby(['HORAS']).agg(custom_agg)
+        grouped_df = grouped_df.astype(str)
+        classes_df = classes_df.astype(str)
+        classes_df['PROFESOR'] = classes_df['PROFESOR'].str.title()
+        classes_df = classes_df.sort_values(by=['HORAS'])
+        classes_df = classes_df[['NRC', 'MATERIA', 'PROFESOR', 'SALON']]
+        classes_df = classes_df.drop_duplicates()
+
+        priority = get_priority(grouped_df, NRCs, white_list)
+
+        if priority not in schedules_by_priority: schedules_by_priority[priority] = [(grouped_df, classes_df)]
+        else: schedules_by_priority[priority].append((grouped_df, classes_df))
+
+    return dict(sorted(schedules_by_priority.items())), color_map
+    # return schedules_by_priority, color_map
+
+def save_schedules(
+            SCHEDULES_PATH: str, 
+            schedules_by_priority: dict[int, list[tuple[pd.DataFrame, pd.DataFrame]]]
+    ) -> None:
+
+    if not os.path.exists(SCHEDULES_PATH.split('/')[0]):
+        os.mkdir(SCHEDULES_PATH.split('/')[0])
+    
+    print('Guardando horarios...')
+    with pd.ExcelWriter(f'{SCHEDULES_PATH}.xlsx') as writer:
         row_count = 0
-        for schedule in schedules:
-            shcedule_df     = pd.DataFrame(columns=['HORAS', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'])
-            classes_df_keys = ['NRC', 'MATERIA', 'HORAS', 'PROFESOR', 'SALON']
-            classes_df      = pd.DataFrame(columns=classes_df_keys)
-            for nrc in schedule:
+        for _, schedules in tqdm(schedules_by_priority.items()):
+            for schedule in schedules:
+                grouped_df, classes_df = schedule
+                grouped_df.to_excel(
+                    writer, 
+                    sheet_name='Sheet1', 
+                    startrow=row_count
+                )
+                classes_df.to_excel(
+                    writer, 
+                    sheet_name='Sheet1', 
+                    startrow=row_count, 
+                    startcol=len(grouped_df.columns) + 2, 
+                    index=False
+                )
+                row_count += len(grouped_df) + 4
 
-                shcedule_df = pd.concat([shcedule_df, pd.DataFrame({
-                    'HORAS'    : [NRCs[nrc].HORAS[0]], 
-                    'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'M' in NRCs[nrc].DIAS else None,
-                    'Martes'   : nrc if 'A' in NRCs[nrc].DIAS else None,
-                    'Miércoles': nrc if 'M' in NRCs[nrc].DIAS else None,
-                    'Jueves'   : nrc if 'J' in NRCs[nrc].DIAS else None,
-                    'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
-                })])
-                shcedule_df = pd.concat([shcedule_df, pd.DataFrame({
-                    'HORAS'    : [NRCs[nrc].HORAS[1]], 
-                    'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'A' in NRCs[nrc].DIAS else None,
-                    'Martes'   : nrc if 'A' in NRCs[nrc].DIAS else None,
-                    'Miércoles': nrc if 'M' in NRCs[nrc].DIAS else None,
-                    'Jueves'   : nrc if 'J' in NRCs[nrc].DIAS else None,
-                    'Viernes'  : nrc if 'V' in NRCs[nrc].DIAS else None
-                })])
-
-                class_temp = pd.DataFrame({key: NRCs[nrc].__dict__[key] for key in classes_df_keys}, index=[0, 1])
-                classes_df = pd.concat([classes_df, class_temp])
-
-                if NRCs[nrc].MATERIA not in color_map: color_map[NRCs[nrc].MATERIA] = i; i+=1
-
-            for hour in hour_intervals:
-                if hour not in shcedule_df['HORAS'].values:
-                    shcedule_df = pd.concat([shcedule_df, pd.DataFrame({
-                        'HORAS'    : [hour], 
-                        'Lunes'    : None,
-                        'Martes'   : None,
-                        'Miércoles': None,
-                        'Jueves'   : None,
-                        'Viernes'  : None
-                    })])
-            grouped_df = shcedule_df.groupby(['HORAS']).agg(custom_agg)
-            grouped_df = grouped_df.astype(str)
-            grouped_df.to_excel(
-                writer, 
-                sheet_name='Sheet1', 
-                startrow=row_count
-            )
-            classes_df = classes_df.astype(str)
-            classes_df['PROFESOR'] = classes_df['PROFESOR'].str.title()
-            classes_df = classes_df.sort_values(by=['HORAS'])
-            classes_df = classes_df[['NRC', 'MATERIA', 'PROFESOR', 'SALON']]
-            classes_df = classes_df.drop_duplicates()
-            classes_df.to_excel(
-                writer, 
-                sheet_name='Sheet1', 
-                startrow=row_count, 
-                startcol=len(grouped_df.columns) + 2, 
-                index=False
-            )
-            row_count += len(grouped_df) + 4
-    return color_map
+def without_nrc(schedules: list[tuple[str]], NRCs_blacklist: list[str]) -> list[tuple[str]]:
+    schedules_without_nrc = []
+    for schedule in schedules:
+        if not any(str(nrc) in NRCs_blacklist for nrc in schedule):
+            schedules_without_nrc.append(schedule)
+    return schedules_without_nrc
 
 def main():
-    SCHEDULES_PATH = 'schedules'
+    SCHEDULES_PATH = 'schedules/schedules'
     DF_PATH_OUTPUT = 'data/classes.csv'
 
     classes_to_take, prof_blacklist, hour_range = get_params()
@@ -249,10 +296,18 @@ def main():
     classes_by_name = group_by_name(NRCs)
     hour_intervals  = range_to_intervals(hour_range)
     schedules       = get_schedules(NRCs, classes_by_name, prof_blacklist, hour_intervals)
-    if not schedules: print('No hay horarios disponibles'); exit()
-    color_map       = save_schedules(SCHEDULES_PATH, schedules, NRCs, hour_intervals)
+    schedules_by_priority, color_map = group_by_priority(schedules, NRCs, hour_intervals, [])
+    save_schedules(SCHEDULES_PATH, schedules_by_priority)
     format_xlsx(SCHEDULES_PATH, color_map, NRCs)
-    print('Horarios guardados en schedules/schedules.xlsx')
+
+    n = 1
+    while input('¿Desea eliminar horarios con NRCs específicos? (y/n): ').lower() == 'y':
+        NRCs_blacklist = input('NRCs a eliminar: ').split(', ')
+        schedules_aux = without_nrc(schedules, NRCs_blacklist)
+        schedules_by_priority_aux, color_map = group_by_priority(schedules_aux, NRCs, hour_intervals, [])
+        save_schedules(f'{SCHEDULES_PATH}{n}', schedules_by_priority_aux)
+        format_xlsx(f'{SCHEDULES_PATH}{n}', color_map, NRCs)
+        n += 1
 
 if __name__ == '__main__':
     main()
