@@ -1,5 +1,3 @@
-import pandas as pd
-
 class Materia:
     def __init__(self, kargs) -> None:
         self.NRC      = kargs['NRC'     ]

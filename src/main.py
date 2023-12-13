@@ -1,8 +1,8 @@
 import os
-from tqdm import tqdm
 import tabula
 import itertools
 import pandas as pd
+from tqdm import tqdm
 from materia import Materia
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -45,15 +45,16 @@ def get_NRCs(df: pd.DataFrame, classes_to_take: list[str]) -> tuple[dict[int, Ma
         if row['Materia'] not in classes_to_take: continue
         start, finish = row['Hora'].split('-')
         hours = range_to_intervals((int(start), int(finish)))
-        if row['NRC'] in NRCs:
-            NRCs[row['NRC']].add_hora(hours)
-            NRCs[row['NRC']].add_dia(row['Días'])
+        nrc = int(row['NRC'])
+        if nrc in NRCs:
+            NRCs[nrc].add_hora(hours)
+            NRCs[nrc].add_dia(row['Días'])
         else:
             row_dict         = row.to_dict()
             row_dict['Hora'] = hours
-            NRCs[row['NRC']] = Materia(row_dict)
-        if (row['NRC'], row['Profesor']) not in Imparte:
-            Imparte.append((row['NRC'], row['Profesor']))
+            NRCs[nrc] = Materia(row_dict)
+        if (nrc, row['Profesor']) not in Imparte:
+            Imparte.append((nrc, row['Profesor']))
 
     return NRCs, Imparte
 
