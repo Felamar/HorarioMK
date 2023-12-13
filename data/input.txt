@@ -1,9 +1,9 @@
 5
-Redes Inalambricas
-Arquitectura de Computadoras
-Progra. Concurrente y Paralela
-Desarrollo de Aplicaciones Web
 Tec.de Inteligencia Artificial
+Arquitectura de Computadoras
+Desarrollo de Aplicaciones Web
+Redes Inalambricas
+Progra. Concurrente y Paralela
 Ceron - Garnica Carmen
 9
 19
