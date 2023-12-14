@@ -80,15 +80,17 @@ def get_schedules(NRCs: dict[int, Materia], classes_by_name: dict[str, list[str]
             time_conflicts  = {}
             conflict_exists = False
             for nrc in schedule:
-                # Check if there is a professor conflict
+                nrc = int(nrc)
+
                 if NRCs[nrc].PROFESOR in prof_blacklist: conflict_exists = True; break
-                # Check if there is a hour conflict
+
                 all_hours_in_range = all(hour_range in hour_ranges for hour_range in NRCs[nrc].HORAS)
                 if not all_hours_in_range: conflict_exists = True; break
-                # Check if there is a schedule conflict
+
                 time_slot = f'{NRCs[nrc].DIAS, NRCs[nrc].HORAS}'
                 time_conflicts[time_slot] = time_conflicts.get(time_slot, 0) + 1
                 if time_conflicts[time_slot] > 1: conflict_exists = True; break
+
             if not conflict_exists: 
                 file.write(f'{schedule}\n')
                 schedules.append(schedule)
@@ -109,7 +111,6 @@ def get_params() -> tuple[list[str], list[str], tuple[int]]:
     for i in range(classes_quantity):
         classes_to_take.append(input(f'| Clase {i+1}'.ljust(20) + ' | '))
         print(' '+'-'*20)
-        # classes_to_take.append(input(f'Nombre de la materia {i+1}: '.ljust(25)))
     prof_blacklist = input('| Profes a Evitar'.ljust(20) + ' | ').lower().split(', ')
     print(' '+'-'*20)
     start_hour = int(input('| Desde: '.ljust(20) + ' | '))
@@ -203,6 +204,7 @@ def group_by_priority(
         classes_df_keys = ['NRC', 'MATERIA', 'HORAS', 'PROFESOR', 'SALON']
         classes_df = pd.DataFrame(columns=classes_df_keys)
         for nrc in schedule:
+            nrc = int(nrc)
             schedule_df = pd.concat([schedule_df, pd.DataFrame({
                 'HORAS'    : [NRCs[nrc].HORAS[0]], 
                 'Lunes'    : nrc if 'L' in NRCs[nrc].DIAS and 'M' in NRCs[nrc].DIAS else None,
@@ -288,8 +290,8 @@ def without_nrc(schedules: list[tuple[str]], NRCs_blacklist: list[str]) -> list[
     return schedules_without_nrc
 
 def main():
-    SCHEDULES_PATH = 'schedules/schedules'
-    DF_PATH_OUTPUT = 'data/classes.csv'
+    SCHEDULES_PATH  = 'schedules/schedules'
+    DF_PATH_OUTPUT  = 'data/classes.csv'
 
     classes_to_take, prof_blacklist, hour_range = get_params()
     df              = get_df(DF_PATH_OUTPUT)
@@ -304,10 +306,10 @@ def main():
     n = 1
     while input('¿Desea eliminar horarios con NRCs específicos? (y/n): ').lower() == 'y':
         NRCs_blacklist = input('NRCs a eliminar: ').split(', ')
-        schedules_aux = without_nrc(schedules, NRCs_blacklist)
+        schedules_aux  = without_nrc(schedules, NRCs_blacklist)
         schedules_by_priority_aux, color_map = group_by_priority(schedules_aux, NRCs, hour_intervals, [])
         save_schedules(f'{SCHEDULES_PATH}{n}', schedules_by_priority_aux)
-        format_xlsx(f'{SCHEDULES_PATH}{n}', color_map, NRCs)
+        format_xlsx   (f'{SCHEDULES_PATH}{n}', color_map, NRCs)
         n += 1
 
 if __name__ == '__main__':
