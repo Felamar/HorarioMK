@@ -3,7 +3,7 @@ Tec.de Inteligencia Artificial
 Arquitectura de Computadoras
 Desarrollo de Aplicaciones Web
 Redes Inalambricas
-Progra. Concurrente y Paralela
+Mineria de Datos
 Ceron - Garnica Carmen
 9
 19
