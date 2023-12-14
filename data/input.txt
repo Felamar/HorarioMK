@@ -1,10 +1,11 @@
-5
+6
 Tec.de Inteligencia Artificial
 Arquitectura de Computadoras
 Desarrollo de Aplicaciones Web
 Redes Inalambricas
 Mineria de Datos
-Ceron - Garnica Carmen
-9
-19
+Teoria de Control
+
+7
+21
 data/horarios.pdf
